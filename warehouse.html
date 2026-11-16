@@ -17,6 +17,11 @@ html[data-layout="landscape"] .stock>div{white-space:nowrap}
 .diameter-controls{display:flex;align-items:center;justify-content:center;gap:3px}
 .diameter-controls button{width:36px;padding:2px}
 .diameter-controls strong{white-space:nowrap;font-size:.85rem}
+.biscuit-card>strong{display:block;text-align:center;margin-bottom:8px}
+.diameter-scroll{overflow-x:auto}
+.diameter-table{min-width:650px;table-layout:fixed}
+.diameter-table th:first-child{width:72px}
+.diameter-controls button{width:24px;min-height:34px}
 </style>
 <header>🦜 ЦЕХ 🌿</header><main><div class="layout"><label for="layout">Вид экрана</label><select id="layout"><option value="auto">По размеру экрана</option><option value="portrait">Вертикальный</option><option value="landscape">Планшет горизонтально</option></select></div><form id="login"><label>Электронная почта<input name="email" type="email" required autocomplete="username"></label><label>Пароль<input name="password" type="password" required autocomplete="current-password"></label><button>Войти</button></form><p id="account"></p><button id="logout" hidden>Выйти</button> <button id="log" hidden>Журнал</button><section id="screen"></section><p id="status" role="status"></p></main>
 <script type="module">
@@ -116,24 +121,31 @@ function render(){
     if(!variants.length || total(item)>0){
       renderStock(card,item,variants.length?'Без распределения по диаметрам':'');
     }
-    if(variants.length) renderDiameters(card,variants);
+    if(variants.length){
+      card.classList.add('biscuit-card');
+      renderDiameters(card,variants);
+    }
   }
 
   function renderDiameters(card,variants){
-    const table=add(card,'table','');
+    const scroller=add(card,'div','');
+    scroller.className='diameter-scroll';
+    scroller.tabIndex=0;
+    scroller.setAttribute('aria-label','Остатки по диаметрам');
+    const table=add(scroller,'table','');
     table.className='diameter-table';
     const heading=add(add(table,'thead',''),'tr','');
-    for(const label of ['Ø, см','Склад 1','Склад 2']) add(heading,'th',label).scope='col';
+    add(heading,'th','Склад').scope='col';
+    for(const variant of variants) add(heading,'th',variant.biscuit_diameter).scope='col';
     const body=add(table,'tbody','');
-    for(const variant of variants){
+    for(const index of [0,1]){
       const row=add(body,'tr','');
-      add(row,'th',variant.biscuit_diameter).scope='row';
-      variant.stock.forEach((_,index)=>{
-        const cell=add(row,'td','');
-        const controls=add(cell,'div','');
+      add(row,'th','Склад '+(index+1)).scope='row';
+      for(const variant of variants){
+        const controls=add(add(row,'td',''),'div','');
         controls.className='diameter-controls';
         renderControls(controls,variant,index,null,true);
-      });
+      }
     }
   }
 
@@ -153,7 +165,7 @@ function render(){
   function renderControls(controls,item,index,sum,compact){
     const count=item.stock[index];
     const warehouse='Склад '+(index+1);
-    const balanceLabel=value=>compact ? value+' шт.' : ' '+value+' ';
+    const balanceLabel=value=>compact ? String(value) : ' '+value+' ';
     function change(delta){
       const stock=draft.get(item) ?? [...item.stock];
       if(stock[index]+delta<0 || stock[index]+delta>2147483647)return;
