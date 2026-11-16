@@ -9,6 +9,8 @@ html[data-layout="landscape"] .stock{flex-wrap:wrap}
 html[data-layout="landscape"] .stock>div{white-space:nowrap}
 .layout{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:16px}
 [hidden]{display:none!important}
+.category-row{display:flex;align-items:center;gap:8px}
+.category-row .category{flex:1;min-width:0}
 </style>
 <header>🦜 ЦЕХ 🌿</header><main><div class="layout"><label for="layout">Вид экрана</label><select id="layout"><option value="auto">По размеру экрана</option><option value="portrait">Вертикальный</option><option value="landscape">Планшет горизонтально</option></select></div><form id="login"><label>Электронная почта<input name="email" type="email" required autocomplete="username"></label><label>Пароль<input name="password" type="password" required autocomplete="current-password"></label><button>Войти</button></form><p id="account"></p><button id="logout" hidden>Выйти</button> <button id="log" hidden>Журнал</button><section id="screen"></section><p id="status" role="status"></p></main>
 <script type="module">
@@ -87,19 +89,22 @@ function render(){
   if(!category){
     add(screen,'h2','Категории');
     for(const entry of data.categories){
-      add(screen,'button',entry.name+' · '+entry.items.reduce((sum,item)=>sum+total(item),0)+' шт. ›',()=>{category=entry;status.textContent='';render();}).className='category';
+      const row=add(screen,'div','');
+      row.className='category-row';
+      add(row,'button',entry.name+' · '+entry.items.reduce((sum,item)=>sum+total(item),0)+' шт. ›',()=>{category=entry;status.textContent='';render();}).className='category';
+      if(admin()) add(row,'button','Удалить',()=>archiveEntry(entry,null))
+        .setAttribute('aria-label','Удалить категорию: '+entry.name);
     }
     if(admin()) add(screen,'button','＋ Добавить категорию',()=>catalogForm(null));
     return;
   }
   add(screen,'button','← Категории',()=>{if(!discardDraft())return;category=null;status.textContent='';render();});
   add(screen,'h2',category.name);
-  if(admin()) add(screen,'button','Удалить категорию',()=>archiveEntry(null));
   let saveButton;
   for(const item of category.items){
     const card=add(screen,'article','');
     add(card,'strong',item.name);
-    if(admin()) add(card,'button','Удалить позицию',()=>archiveEntry(item));
+    if(admin()) add(card,'button','Удалить позицию',()=>archiveEntry(category,item));
     const sum=add(card,'p','Всего '+total(item)+' шт.');
     const stocks=add(card,'div','');
     stocks.className='stocks';
@@ -136,11 +141,11 @@ function render(){
     saveButton.disabled=!draft.size;
   }
 }
-async function archiveEntry(item){
-  const currentId=category.id;
+async function archiveEntry(entry,item){
+  const currentId=entry.id;
   const question=item
     ? 'Удалить позицию «'+item.name+'» из списка остатков?'
-    : 'Удалить категорию «'+category.name+'» вместе со всеми её позициями из списка остатков?';
+    : 'Удалить категорию «'+entry.name+'» вместе со всеми её позициями из списка остатков?';
   if(!window.confirm(question) || !discardDraft()) return;
   screen.inert=true;
   $('logout').disabled=true;
