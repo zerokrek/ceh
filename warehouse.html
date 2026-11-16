@@ -23,6 +23,8 @@ html[data-layout="landscape"] .stock>div{white-space:nowrap}
 .diameter-table th:first-child{width:72px}
 .diameter-controls button{width:24px;min-height:34px}
 @media(max-width:550px){.category-row{flex-wrap:wrap}.category-row .category{flex-basis:100%;margin-bottom:0}}
+.admin-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-left:auto}
+.category-row .admin-actions{flex-shrink:0;max-width:100%}
 </style>
 <header>🦜 ЦЕХ 🌿</header><main><div class="layout"><label for="layout">Вид экрана</label><select id="layout"><option value="auto">По размеру экрана</option><option value="portrait">Вертикальный</option><option value="landscape">Планшет горизонтально</option></select></div><form id="login"><label>Электронная почта<input name="email" type="email" required autocomplete="username"></label><label>Пароль<input name="password" type="password" required autocomplete="current-password"></label><button>Войти</button></form><p id="account"></p><button id="logout" hidden>Выйти</button> <button id="log" hidden>Журнал</button><section id="screen"></section><p id="status" role="status"></p></main>
 <script type="module">
@@ -117,10 +119,14 @@ function render(){
       const row=add(screen,'div','');
       row.className='category-row';
       add(row,'button',entry.name+' · '+categoryTotal(entry)+' шт. ›',()=>{category=entry;status.textContent='';render();}).className='category';
-      if(admin()) add(row,'button','Переименовать',()=>renameEntry(entry,null))
-        .setAttribute('aria-label','Переименовать категорию: '+entry.name);
-      if(admin()) add(row,'button','Удалить',()=>archiveEntry(entry,null))
-        .setAttribute('aria-label','Удалить категорию: '+entry.name);
+      if(admin()){
+        const actions=add(row,'div','');
+        actions.className='admin-actions';
+        add(actions,'button','Переименовать',()=>renameEntry(entry,null))
+          .setAttribute('aria-label','Переименовать категорию: '+entry.name);
+        add(actions,'button','Удалить',()=>archiveEntry(entry,null))
+          .setAttribute('aria-label','Удалить категорию: '+entry.name);
+      }
     }
     if(admin()) add(screen,'button','＋ Добавить категорию',()=>catalogForm(null));
     return;
@@ -131,8 +137,12 @@ function render(){
   for(const item of category.items.filter(product=>product.biscuit_parent_id===null)){
     const card=add(screen,'article','');
     add(card,'strong',item.name);
-    if(admin()) add(card,'button','Переименовать',()=>renameEntry(category,item));
-    if(admin()) add(card,'button','Удалить позицию',()=>archiveEntry(category,item));
+    if(admin()){
+      const actions=add(card,'div','');
+      actions.className='admin-actions';
+      add(actions,'button','Переименовать',()=>renameEntry(category,item));
+      add(actions,'button','Удалить позицию',()=>archiveEntry(category,item));
+    }
     const variants=category.items.filter(product=>product.biscuit_parent_id===item.id)
       .sort((left,right)=>left.biscuit_diameter-right.biscuit_diameter);
     if(!variants.length) renderStock(card,item);
