@@ -5,7 +5,7 @@ where lower(trim(c.name))='бисквиты' or exists (
   select 1 from public.ceh_products p where p.category_id=c.id and p.biscuit_parent_id is not null
 );
 create or replace function public.ceh_seed_biscuit_diameters(parent_id integer)
-returns void language sql set search_path = '' as $
+returns void language sql set search_path = '' as $$
   with variants as (
     insert into public.ceh_products(category_id,name,biscuit_parent_id,biscuit_diameter)
     select p.category_id,left(p.name,88) || ' · Ø' || d.size || ' см',p.id,d.size
@@ -18,7 +18,7 @@ returns void language sql set search_path = '' as $
   )
   insert into public.ceh_stock(product_id,warehouse_id,quantity)
   select variants.id,w.id,0 from variants cross join public.ceh_warehouses w;
-$;
+$$;
 create function public.ceh_rename_catalog_entry(entry_category integer, entry_product integer, new_name text)
 returns void language plpgsql security definer set search_path = '' as $$
 begin
