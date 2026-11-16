@@ -21,6 +21,8 @@ const screen = $('screen'), status = $('status');
 $('layout').onchange=event=>{
   document.documentElement.dataset.layout=event.target.value;
 };
+const nameOrder = new Intl.Collator('ru', { numeric: true });
+const compareNames = (left, right) => nameOrder.compare(left.name, right.name);
 let data = {categories:[]};
 let category=null;
 let saving=false;
@@ -30,8 +32,9 @@ async function loadStock(){
     client.from('ceh_products').select('id,category_id,name,ceh_stock(warehouse_id,quantity)').order('id')
   ]);
   for(const response of responses) if(response.error) throw response.error;
-  data.categories = responses[0].data.map(entry=>({...entry, items:responses[1].data
+  data.categories = responses[0].data.sort(compareNames).map(entry=>({...entry, items:responses[1].data
     .filter(product=>product.category_id===entry.id)
+    .sort(compareNames)
     .map(product=>({...product,stock:[1,2].map(id=>product.ceh_stock.find(row=>row.warehouse_id===id)?.quantity ?? 0)}))}));
 }
 const draft=new Map();
