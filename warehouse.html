@@ -23,17 +23,18 @@ $('layout').onchange=event=>{
 };
 const nameOrder = new Intl.Collator('ru', { numeric: true });
 const compareNames = (left, right) => nameOrder.compare(left.name, right.name);
-let data = {categories:[]};
+let data = {categories:[], productNames:new Map()};
 let category=null;
 let saving=false;
 async function loadStock(){
   const responses = await Promise.all([
-    client.from('ceh_categories').select('id,name').order('id'),
-    client.from('ceh_products').select('id,category_id,name,ceh_stock(warehouse_id,quantity)').order('id')
+    client.from('ceh_categories').select('id,name').is('archived_at',null).order('id'),
+    client.from('ceh_products').select('id,category_id,name,archived_at,ceh_stock(warehouse_id,quantity)').order('id')
   ]);
   for(const response of responses) if(response.error) throw response.error;
+  data.productNames = new Map(responses[1].data.map(product=>[product.id,product.name]));
   data.categories = responses[0].data.sort(compareNames).map(entry=>({...entry, items:responses[1].data
-    .filter(product=>product.category_id===entry.id)
+    .filter(product=>product.category_id===entry.id && !product.archived_at)
     .sort(compareNames)
     .map(product=>({...product,stock:[1,2].map(id=>product.ceh_stock.find(row=>row.warehouse_id===id)?.quantity ?? 0)}))}));
 }
@@ -93,10 +94,12 @@ function render(){
   }
   add(screen,'button','← Категории',()=>{if(!discardDraft())return;category=null;status.textContent='';render();});
   add(screen,'h2',category.name);
+  if(admin()) add(screen,'button','Удалить категорию',()=>archiveEntry(null));
   let saveButton;
   for(const item of category.items){
     const card=add(screen,'article','');
     add(card,'strong',item.name);
+    if(admin()) add(card,'button','Удалить позицию',()=>archiveEntry(item));
     const sum=add(card,'p','Всего '+total(item)+' шт.');
     const stocks=add(card,'div','');
     stocks.className='stocks';
@@ -131,6 +134,32 @@ function render(){
     saveButton=add(screen,'button','Сохранить',saveDraft);
     saveButton.className='save-stock';
     saveButton.disabled=!draft.size;
+  }
+}
+async function archiveEntry(item){
+  const currentId=category.id;
+  const question=item
+    ? 'Удалить позицию «'+item.name+'» из списка остатков?'
+    : 'Удалить категорию «'+category.name+'» вместе со всеми её позициями из списка остатков?';
+  if(!window.confirm(question) || !discardDraft()) return;
+  screen.inert=true;
+  $('logout').disabled=true;
+  $('log').disabled=true;
+  let archived=false;
+  try {
+    const {error}=await client.rpc('ceh_archive_catalog_entry',{category_id:currentId,product_id:item?.id ?? null});
+    if(error) throw error;
+    archived=true;
+    await loadStock();
+    category=data.categories.find(entry=>entry.id===currentId) ?? null;
+    status.textContent=item?'Позиция удалена.':'Категория удалена.';
+  } catch {
+    status.textContent=archived?'Запись удалена. Обнови страницу.':'Не удалось подтвердить удаление. Обнови страницу перед повтором.';
+  } finally {
+    screen.inert=false;
+    $('logout').disabled=false;
+    $('log').disabled=false;
+    render();
   }
 }
 function catalogForm(categoryId){
@@ -232,9 +261,8 @@ $('log').onclick=async()=>{
       .order('id',{ascending:false}).limit(100);
     if(error) throw error;
     if(!rows.length)add(screen,'p','Операций пока нет.');
-    const products=data.categories.flatMap(entry=>entry.items);
     for(const row of rows){
-      const name=products.find(product=>product.id===row.product_id)?.name ?? row.product_id;
+      const name=data.productNames.get(row.product_id) ?? row.product_id;
       add(screen,'article',new Date(row.created_at).toLocaleString('ru-RU')+' · '+name+' · Склад '+row.warehouse_id+' · '+row.quantity_before+' → '+row.quantity_after);
     }
   } catch {status.textContent='Не удалось загрузить журнал.';}
