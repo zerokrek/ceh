@@ -89,6 +89,18 @@ async function saveDraft(){
 }
 const admin=()=>profile?.role==='admin';
 const total=item=>item.stock[0]+item.stock[1];
+
+function categoryTotal(entry){
+  const totalsByParent=new Map();
+  for(const item of entry.items){
+    if(item.biscuit_parent_id===null) continue;
+    const parentId=item.biscuit_parent_id;
+    totalsByParent.set(parentId,(totalsByParent.get(parentId) ?? 0)+total(item));
+  }
+  return entry.items.reduce((sum,item)=>item.biscuit_parent_id===null
+    ? sum+(totalsByParent.get(item.id) ?? total(item))
+    : sum,0);
+}
 function add(parent,tag,label,action){
   const node=document.createElement(tag);
   node.textContent=label;
@@ -104,7 +116,7 @@ function render(){
     for(const entry of data.categories){
       const row=add(screen,'div','');
       row.className='category-row';
-      add(row,'button',entry.name+' · '+entry.items.reduce((sum,item)=>sum+total(item),0)+' шт. ›',()=>{category=entry;status.textContent='';render();}).className='category';
+      add(row,'button',entry.name+' · '+categoryTotal(entry)+' шт. ›',()=>{category=entry;status.textContent='';render();}).className='category';
       if(admin()) add(row,'button','Переименовать',()=>renameEntry(entry,null))
         .setAttribute('aria-label','Переименовать категорию: '+entry.name);
       if(admin()) add(row,'button','Удалить',()=>archiveEntry(entry,null))
