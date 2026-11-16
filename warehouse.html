@@ -22,6 +22,7 @@ html[data-layout="landscape"] .stock>div{white-space:nowrap}
 .diameter-table{min-width:650px;table-layout:fixed}
 .diameter-table th:first-child{width:72px}
 .diameter-controls button{width:24px;min-height:34px}
+@media(max-width:550px){.category-row{flex-wrap:wrap}.category-row .category{flex-basis:100%;margin-bottom:0}}
 </style>
 <header>🦜 ЦЕХ 🌿</header><main><div class="layout"><label for="layout">Вид экрана</label><select id="layout"><option value="auto">По размеру экрана</option><option value="portrait">Вертикальный</option><option value="landscape">Планшет горизонтально</option></select></div><form id="login"><label>Электронная почта<input name="email" type="email" required autocomplete="username"></label><label>Пароль<input name="password" type="password" required autocomplete="current-password"></label><button>Войти</button></form><p id="account"></p><button id="logout" hidden>Выйти</button> <button id="log" hidden>Журнал</button><section id="screen"></section><p id="status" role="status"></p></main>
 <script type="module">
@@ -41,7 +42,7 @@ let category=null;
 let saving=false;
 async function loadStock(){
   const responses = await Promise.all([
-    client.from('ceh_categories').select('id,name').is('archived_at',null).order('id'),
+    client.from('ceh_categories').select('id,name,has_biscuit_diameters').is('archived_at',null).order('id'),
     client.from('ceh_products').select('id,category_id,name,archived_at,biscuit_parent_id,biscuit_diameter,ceh_stock(warehouse_id,quantity)').order('id')
   ]);
   for(const response of responses) if(response.error) throw response.error;
@@ -103,6 +104,8 @@ function render(){
       const row=add(screen,'div','');
       row.className='category-row';
       add(row,'button',entry.name+' · '+entry.items.reduce((sum,item)=>sum+total(item),0)+' шт. ›',()=>{category=entry;status.textContent='';render();}).className='category';
+      if(admin()) add(row,'button','Переименовать',()=>renameEntry(entry,null))
+        .setAttribute('aria-label','Переименовать категорию: '+entry.name);
       if(admin()) add(row,'button','Удалить',()=>archiveEntry(entry,null))
         .setAttribute('aria-label','Удалить категорию: '+entry.name);
     }
@@ -115,6 +118,7 @@ function render(){
   for(const item of category.items.filter(product=>product.biscuit_parent_id===null)){
     const card=add(screen,'article','');
     add(card,'strong',item.name);
+    if(admin()) add(card,'button','Переименовать',()=>renameEntry(category,item));
     if(admin()) add(card,'button','Удалить позицию',()=>archiveEntry(category,item));
     const variants=category.items.filter(product=>product.biscuit_parent_id===item.id)
       .sort((left,right)=>left.biscuit_diameter-right.biscuit_diameter);
@@ -193,6 +197,39 @@ function render(){
     saveButton.disabled=!draft.size;
   }
 }
+async function renameEntry(entry,item){
+  const original=item?.name ?? entry.name;
+  const name=window.prompt('Новое название',original)?.trim();
+  if(name===undefined || name===original) return;
+  if(!name || [...name].length>100){
+    status.textContent='Введи название длиной от 1 до 100 символов.';
+    return;
+  }
+  if(!discardDraft()) return;
+  const currentId=category?.id;
+  screen.inert=true;
+  $('logout').disabled=true;
+  $('log').disabled=true;
+  let renamed=false;
+  try {
+    const {error}=await client.rpc('ceh_rename_catalog_entry',{
+      entry_category:entry.id,entry_product:item?.id ?? null,new_name:name
+    });
+    if(error) throw error;
+    renamed=true;
+    await loadStock();
+    category=data.categories.find(candidate=>candidate.id===currentId) ?? null;
+    status.textContent='Название сохранено.';
+  } catch(error){
+    status.textContent=renamed?'Название сохранено. Обнови страницу.':
+      error.code==='23505'?'Такое название уже есть.':'Не удалось подтвердить переименование.';
+  } finally {
+    screen.inert=false;
+    $('logout').disabled=false;
+    $('log').disabled=false;
+    render();
+  }
+}
 async function archiveEntry(entry,item){
   const currentId=entry.id;
   const question=item
@@ -226,7 +263,7 @@ function catalogForm(categoryId){
   const name=add(add(form,'label','Название'),'input','');
   name.required=true;
   name.maxLength=100;
-  const biscuit=categoryId!==null && category.name.trim().toLowerCase()==='бисквиты';
+  const biscuit=categoryId!==null && (category.has_biscuit_diameters || category.name.trim().toLowerCase()==='бисквиты');
   const stocks=categoryId===null || biscuit?[]:[1,2].map(id=>{
     const input=add(add(form,'label','Склад '+id),'input','');
     input.type='number';
