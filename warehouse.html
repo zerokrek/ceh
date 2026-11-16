@@ -449,6 +449,49 @@ function catalogForm(categoryId){
   status.textContent='';
   name.focus();
 }
+function renderPasswordSetup(){
+  screen.replaceChildren();
+  add(screen,'h2','Задай постоянный пароль');
+  const form=add(screen,'form','');
+  const fields=['Новый пароль','Повтори новый пароль'].map(text=>{
+    const input=add(add(form,'label',text),'input','');
+    input.type='password';
+    input.autocomplete='new-password';
+    input.required=true;
+    input.minLength=12;
+    return input;
+  });
+  const submit=add(form,'button','Сохранить пароль');
+  submit.type='submit';
+  form.addEventListener('submit',async event=>{
+    event.preventDefault();
+    if(submit.disabled)return;
+    const [password,confirmation]=fields.map(input=>input.value);
+    if(password!==confirmation){
+      status.textContent='Пароли не совпадают.';
+      return;
+    }
+    submit.disabled=true;
+    status.textContent='Сохраняю пароль…';
+    try{
+      const {error}=await client.auth.updateUser({password});
+      if(error){
+        status.textContent=error.code==='same_password'
+          ? 'Новый пароль должен отличаться от временного.'
+          : 'Не удалось сменить пароль. Проверь требования к паролю и попробуй ещё раз.';
+        return;
+      }
+      form.reset();
+      screen.replaceChildren();
+      await openWorkspace();
+    }catch{
+      status.textContent='Не удалось подтвердить смену пароля. Попробуй войти снова.';
+    }finally{
+      submit.disabled=false;
+    }
+  });
+}
+
 async function openWorkspace(){
   status.textContent='';
   const {data:{session},error}=await client.auth.getSession();
@@ -456,6 +499,10 @@ async function openWorkspace(){
   const result=await client.from('ceh_profiles').select('display_name,role,login').eq('id',session.user.id).maybeSingle();
   $('login').hidden=true;
   $('logout').hidden=false;
+  if(!result.error && !result.data && session.user.app_metadata?.ceh_pending_activation===true){
+    renderPasswordSetup();
+    return;
+  }
   if(result.error || !result.data){
     status.textContent='Для этой учётной записи не настроен профиль «ЦЕХа».';
     return;
