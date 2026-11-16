@@ -26,6 +26,7 @@ html[data-layout="landscape"] .stock>div{white-space:nowrap}
 </style>
 <header>🦜 ЦЕХ 🌿</header><main><div class="layout"><label for="layout">Вид экрана</label><select id="layout"><option value="auto">По размеру экрана</option><option value="portrait">Вертикальный</option><option value="landscape">Планшет горизонтально</option></select></div><form id="login"><label>Электронная почта<input name="email" type="email" required autocomplete="username"></label><label>Пароль<input name="password" type="password" required autocomplete="current-password"></label><button>Войти</button></form><p id="account"></p><button id="logout" hidden>Выйти</button> <button id="log" hidden>Журнал</button><section id="screen"></section><p id="status" role="status"></p></main>
 <script type="module">
+const warehouseNames = {1: "Ленина 2", 2: "Вокзальная 5/2"};
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { supabaseUrl, supabasePublishableKey } from './supabase-config.js';
 const client = createClient(supabaseUrl, supabasePublishableKey);
@@ -142,7 +143,7 @@ function render(){
     const body=add(table,'tbody','');
     for(const index of [0,1]){
       const row=add(body,'tr','');
-      add(row,'th','Склад '+(index+1)).scope='row';
+      add(row,'th',warehouseNames[index+1]).scope='row';
       for(const variant of variants){
         const controls=add(add(row,'td',''),'div','');
         controls.className='diameter-controls';
@@ -158,14 +159,14 @@ function render(){
     item.stock.forEach((_,index)=>{
       const row=add(stocks,'div','');
       row.className='stock';
-      add(row,'span','Склад '+(index+1));
+      add(row,'span',warehouseNames[index+1]);
       renderControls(add(row,'div',''),item,index,sum,false);
     });
   }
 
   function renderControls(controls,item,index,sum,compact){
     const count=item.stock[index];
-    const warehouse='Склад '+(index+1);
+    const warehouse=warehouseNames[index+1];
     const balanceLabel=value=>compact ? String(value) : ' '+value+' ';
     function change(delta){
       const stock=draft.get(item) ?? [...item.stock];
@@ -262,7 +263,7 @@ function catalogForm(categoryId){
   name.maxLength=100;
   const biscuit=categoryId!==null && (category.has_biscuit_diameters || category.name.trim().toLowerCase()==='бисквиты');
   const stocks=categoryId===null || biscuit?[]:[1,2].map(id=>{
-    const input=add(add(form,'label','Склад '+id),'input','');
+    const input=add(add(form,'label',warehouseNames[id]),'input','');
     input.type='number';
     input.required=true;
     input.min='0';
@@ -355,7 +356,7 @@ $('log').onclick=async()=>{
     if(!rows.length)add(screen,'p','Операций пока нет.');
     for(const row of rows){
       const name=data.productNames.get(row.product_id) ?? row.product_id;
-      add(screen,'article',new Date(row.created_at).toLocaleString('ru-RU')+' · '+name+' · Склад '+row.warehouse_id+' · '+row.quantity_before+' → '+row.quantity_after);
+      add(screen,'article',new Date(row.created_at).toLocaleString('ru-RU')+' · '+name+' · '+(warehouseNames[row.warehouse_id] ?? 'Склад '+row.warehouse_id)+' · '+row.quantity_before+' → '+row.quantity_after);
     }
   } catch {status.textContent='Не удалось загрузить журнал.';}
 };
