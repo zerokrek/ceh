@@ -22,9 +22,15 @@ html[data-layout="landscape"] .stock>div{white-space:nowrap}
 .diameter-table{min-width:650px;table-layout:fixed}
 .diameter-table th:first-child{width:72px}
 .diameter-controls button{width:24px;min-height:34px}
-@media(max-width:550px){.category-row{flex-wrap:wrap}.category-row .category{flex-basis:100%;margin-bottom:0}}
-.admin-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-left:auto}
-.category-row .admin-actions{flex-shrink:0;max-width:100%}
+.item-heading{display:flex;align-items:center;gap:8px}
+.item-heading>strong{min-width:0;overflow-wrap:anywhere}
+.category-row .category{overflow-wrap:anywhere}
+.admin-actions{display:flex;flex-shrink:0;align-items:center;gap:8px;margin-left:auto}
+@media(max-width:550px){
+  .category-row,.item-heading,.admin-actions{gap:4px}
+  .admin-actions button{font-size:12px;padding:4px}
+  .category-row .category{padding:8px}
+}
 </style>
 <header>🦜 ЦЕХ 🌿</header><main><div class="layout"><label for="layout">Вид экрана</label><select id="layout"><option value="auto">По размеру экрана</option><option value="portrait">Вертикальный</option><option value="landscape">Планшет горизонтально</option></select></div><form id="login"><label>Электронная почта<input name="email" type="email" required autocomplete="username"></label><label>Пароль<input name="password" type="password" required autocomplete="current-password"></label><button>Войти</button></form><p id="account"></p><button id="logout" hidden>Выйти</button> <button id="log" hidden>Журнал</button><section id="screen"></section><p id="status" role="status"></p></main>
 <script type="module">
@@ -136,9 +142,11 @@ function render(){
   let saveButton;
   for(const item of category.items.filter(product=>product.biscuit_parent_id===null)){
     const card=add(screen,'article','');
-    add(card,'strong',item.name);
+    const heading=add(card,'div','');
+    heading.className='item-heading';
+    add(heading,'strong',item.name);
     if(admin()){
-      const actions=add(card,'div','');
+      const actions=add(heading,'div','');
       actions.className='admin-actions';
       add(actions,'button','Переименовать',()=>renameEntry(category,item));
       add(actions,'button','Удалить позицию',()=>archiveEntry(category,item));
