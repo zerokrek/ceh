@@ -150,31 +150,75 @@ $('staff-users').addEventListener('click',()=>{
   if(!admin() || !discardDraft()) return;
   screen.replaceChildren();
   status.textContent='';
-  add(screen,'button','← Категории',()=>{category=null;status.textContent='';render();});
+  const back=add(screen,'button','← Категории',()=>{category=null;status.textContent='';render();});
   add(screen,'h2','Пользователи');
-  add(screen,'p','Прототип. Здесь можно проверить копирование на примере.');
-  const label=add(screen,'label','Учётная запись');
+  const form=add(screen,'form','');
+  const label=add(form,'label','Учётная запись');
   const select=add(label,'select','');
   for(const [login,id] of staffWarehouses){
     const option=add(select,'option','Кондитер '+login.slice(-1)+' · '+warehouseNames[id]);
     option.value=login;
   }
-  const preview=add(screen,'textarea','');
-  preview.readOnly=true;
-  preview.setAttribute('aria-label','Пример сообщения для кондитера');
-  function updatePreview(){
-    preview.value='Логин: '+select.value+'\nВременный пароль: [пример]';
-    status.textContent='';
-  }
-  select.addEventListener('change',updatePreview);
-  updatePreview();
-  add(screen,'button','Скопировать пример',async()=>{
+  const create=add(form,'button','Создать учётку');
+  create.type='submit';
+  const message=add(form,'p','');
+  message.setAttribute('role','status');
+  const result=add(form,'div','');
+  result.hidden=true;
+  const credentials=add(result,'textarea','');
+  credentials.readOnly=true;
+  credentials.rows=3;
+  credentials.setAttribute('aria-label','Логин и временный пароль');
+  const copy=add(result,'button','Скопировать логин и пароль',async()=>{
     try{
-      await navigator.clipboard.writeText(preview.value);
-      status.textContent='Пример скопирован';
+      await navigator.clipboard.writeText(credentials.value);
+      message.textContent='Скопировано. Передай данные кондитеру в личном сообщении.';
     }catch{
-      preview.select();
-      status.textContent='Скопируй выделенный текст вручную';
+      credentials.focus();
+      credentials.select();
+      message.textContent='Скопируй выделенный текст вручную.';
+    }
+  });
+  copy.type='button';
+
+  select.addEventListener('change',()=>{
+    credentials.value='';
+    result.hidden=true;
+    message.textContent='';
+  });
+
+  form.addEventListener('submit',async(event)=>{
+    event.preventDefault();
+    if(create.disabled || !admin()) return;
+    const login=select.value;
+    create.disabled=true;
+    select.disabled=true;
+    back.disabled=true;
+    credentials.value='';
+    result.hidden=true;
+    message.textContent='Создаю учётку…';
+    try{
+      const {data,error}=await client.functions.invoke('ceh-create-staff',{body:{login}});
+      if(error){
+        const code=error.context?.status;
+        message.textContent=code===409 ? 'Эта учётка уже существует.'
+          : code===401 || code===403 ? 'Проверь, что ты вошёл как администратор.'
+          : 'Не удалось подтвердить создание учётки.';
+        return;
+      }
+      if(data?.login!==login || typeof data.temporaryPassword!=='string' || !data.temporaryPassword){
+        message.textContent='Сервер не вернул временный пароль.';
+        return;
+      }
+      credentials.value='Логин: '+login+'\nВременный пароль: '+data.temporaryPassword;
+      result.hidden=false;
+      message.textContent='Учётка создана. Скопируй данные для ручной передачи.';
+    }catch{
+      message.textContent='Не удалось подтвердить создание учётки.';
+    }finally{
+      select.disabled=false;
+      create.disabled=false;
+      back.disabled=false;
     }
   });
 });
