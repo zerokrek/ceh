@@ -31,7 +31,7 @@ let saving=false;
 async function loadStock(){
   const responses = await Promise.all([
     client.from('ceh_categories').select('id,name').is('archived_at',null).order('id'),
-    client.from('ceh_products').select('id,category_id,name,archived_at,ceh_stock(warehouse_id,quantity)').order('id')
+    client.from('ceh_products').select('id,category_id,name,archived_at,biscuit_parent_id,biscuit_diameter,ceh_stock(warehouse_id,quantity)').order('id')
   ]);
   for(const response of responses) if(response.error) throw response.error;
   data.productNames = new Map(responses[1].data.map(product=>[product.id,product.name]));
@@ -101,10 +101,19 @@ function render(){
   add(screen,'button','← Категории',()=>{if(!discardDraft())return;category=null;status.textContent='';render();});
   add(screen,'h2',category.name);
   let saveButton;
-  for(const item of category.items){
+  for(const item of category.items.filter(product=>product.biscuit_parent_id===null)){
     const card=add(screen,'article','');
     add(card,'strong',item.name);
     if(admin()) add(card,'button','Удалить позицию',()=>archiveEntry(category,item));
+    const variants=category.items.filter(product=>product.biscuit_parent_id===item.id)
+      .sort((left,right)=>left.biscuit_diameter-right.biscuit_diameter);
+    if(!variants.length || total(item)>0){
+      renderStock(card,item,variants.length?'Без распределения по диаметрам':'');
+    }
+    for(const variant of variants) renderStock(card,variant,'Ø '+variant.biscuit_diameter+' см');
+  }
+  function renderStock(card,item,label){
+    if(label) add(card,'h3',label);
     const sum=add(card,'p','Всего '+total(item)+' шт.');
     const stocks=add(card,'div','');
     stocks.className='stocks';
@@ -174,7 +183,8 @@ function catalogForm(categoryId){
   const name=add(add(form,'label','Название'),'input','');
   name.required=true;
   name.maxLength=100;
-  const stocks=categoryId===null?[]:[1,2].map(id=>{
+  const biscuit=categoryId!==null && category.name.trim().toLowerCase()==='бисквиты';
+  const stocks=categoryId===null || biscuit?[]:[1,2].map(id=>{
     const input=add(add(form,'label','Склад '+id),'input','');
     input.type='number';
     input.required=true;
@@ -195,7 +205,7 @@ function catalogForm(categoryId){
     let saved=false;
     try {
       const {error}=await client.rpc('ceh_add_catalog_entry',{
-        entry_name:name.value.trim(),category:categoryId,quantities:stocks.map(input=>input.valueAsNumber)
+        entry_name:name.value.trim(),category:categoryId,quantities:biscuit?[0,0]:stocks.map(input=>input.valueAsNumber)
       });
       if(error){
         status.textContent=error.code==='23505'?'Такое название уже есть.':'Не удалось добавить запись.';
