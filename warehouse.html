@@ -1,0 +1,187 @@
+<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ЦЕХ — тест склада</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#eff5e9;color:#17392c;font:16px system-ui}header{background:#123f31;color:white;padding:24px;font-size:28px;font-weight:800}main{max-width:720px;margin:auto;padding:18px}button,input,select{font:inherit;padding:10px;border:1px solid #bdcec0;border-radius:10px;background:white;color:inherit;min-height:46px}button{cursor:pointer}article,.category,form{display:block;width:100%;background:white;border-radius:14px;padding:15px;margin:10px 0;border:1px solid #ceded1}.category{text-align:left;border-left:6px solid #36a989}.stocks{display:grid;gap:8px}.stock{background:#edf5ed;padding:8px;border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:10px}.stock button{min-width:46px}label,input{display:block}input{width:100%;margin:5px 0 12px}.save-stock{width:100%;background:#146347;color:white;border-color:#146347;font-weight:700}button:disabled{opacity:.4}@media(min-width:580px){.stocks{grid-template-columns:1fr 1fr}}
+html[data-layout="portrait"] main{max-width:480px}
+html[data-layout="portrait"] .stocks{grid-template-columns:minmax(0,1fr)}
+html[data-layout="landscape"] main{max-width:1000px}
+html[data-layout="landscape"] .stocks{grid-template-columns:repeat(2,minmax(0,1fr))}
+html[data-layout="landscape"] .stock{flex-wrap:wrap}
+html[data-layout="landscape"] .stock>div{white-space:nowrap}
+.layout{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:16px}
+[hidden]{display:none!important}
+</style>
+<header>🦜 ЦЕХ 🌿</header><main><div class="layout"><label for="layout">Вид экрана</label><select id="layout"><option value="auto">По размеру экрана</option><option value="portrait">Вертикальный</option><option value="landscape">Планшет горизонтально</option></select></div><form id="login"><label>Электронная почта<input name="email" type="email" required autocomplete="username"></label><label>Пароль<input name="password" type="password" required autocomplete="current-password"></label><button>Войти</button></form><p id="account"></p><button id="logout" hidden>Выйти</button> <button id="log" hidden>Журнал</button><section id="screen"></section><p id="status" role="status"></p></main>
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { supabaseUrl, supabasePublishableKey } from './supabase-config.js';
+const client = createClient(supabaseUrl, supabasePublishableKey);
+let profile;
+const $ = id => document.getElementById(id);
+const screen = $('screen'), status = $('status');
+$('layout').onchange=event=>{
+  document.documentElement.dataset.layout=event.target.value;
+};
+let data = {categories:[]};
+let category=null;
+let saving=false;
+async function loadStock(){
+  const responses = await Promise.all([
+    client.from('ceh_categories').select('id,name').order('id'),
+    client.from('ceh_products').select('id,category_id,name,ceh_stock(warehouse_id,quantity)').order('id')
+  ]);
+  for(const response of responses) if(response.error) throw response.error;
+  data.categories = responses[0].data.map(entry=>({...entry, items:responses[1].data
+    .filter(product=>product.category_id===entry.id)
+    .map(product=>({...product,stock:[1,2].map(id=>product.ceh_stock.find(row=>row.warehouse_id===id)?.quantity ?? 0)}))}));
+}
+const draft=new Map();
+function discardDraft(){
+  if(draft.size && !window.confirm('Выйти без сохранения изменений?')) return false;
+  draft.clear();
+  return true;
+}
+async function saveDraft(){
+  if(admin() || !draft.size || saving) return;
+  const changes = [...draft].flatMap(([item, stock])=>stock.flatMap((quantity,index)=>
+    quantity===item.stock[index] ? [] : [{product_id:item.id,warehouse_id:index+1,expected:item.stock[index],quantity}]));
+  saving=true;
+  screen.inert=true;
+  $('logout').disabled=true;
+  try {
+    const {error}=await client.rpc('ceh_save_stock',{changes});
+    if(error) {
+      status.textContent=error.code==='40001'
+        ? 'Остатки уже изменились. Выйди из категории и обнови страницу перед повторным вводом.'
+        : 'Не удалось сохранить остатки.';
+      return;
+    }
+    for(const [item,stock] of draft) item.stock=stock;
+    draft.clear();
+    category=null;
+    render();
+    status.textContent='Изменения сохранены';
+  } catch {
+    status.textContent='Связь с сервером прервалась. Проверь остатки перед повторным вводом.';
+  } finally {
+    saving=false;
+    screen.inert=false;
+    $('logout').disabled=false;
+  }
+}
+const admin=()=>profile?.role==='admin';
+const total=item=>item.stock[0]+item.stock[1];
+function add(parent,tag,label,action){
+  const node=document.createElement(tag);
+  node.textContent=label;
+  if(action){node.type='button';node.onclick=action;}
+  parent.append(node);
+  return node;
+}
+function render(){
+  screen.replaceChildren();
+  $('log').hidden=!admin();
+  if(!category){
+    add(screen,'h2','Категории');
+    for(const entry of data.categories){
+      add(screen,'button',entry.name+' · '+entry.items.reduce((sum,item)=>sum+total(item),0)+' шт. ›',()=>{category=entry;status.textContent='';render();}).className='category';
+    }
+    return;
+  }
+  add(screen,'button','← Категории',()=>{if(!discardDraft())return;category=null;status.textContent='';render();});
+  add(screen,'h2',category.name);
+  let saveButton;
+  for(const item of category.items){
+    const card=add(screen,'article','');
+    add(card,'strong',item.name);
+    const sum=add(card,'p','Всего '+total(item)+' шт.');
+    const stocks=add(card,'div','');
+    stocks.className='stocks';
+    item.stock.forEach((count,index)=>{
+      const row=add(stocks,'div','');row.className='stock';
+      const warehouse='Склад '+(index+1);
+      add(row,'span',warehouse);
+      const controls=add(row,'div','');
+      function change(delta){
+        const stock=draft.get(item) ?? [...item.stock];
+        if(admin()||stock[index]+delta<0)return;
+        stock[index]+=delta;
+        if(stock.every((value,i)=>value===item.stock[i])) draft.delete(item);
+        else draft.set(item,stock);
+        balance.textContent=stock[index];
+        minus.disabled=stock[index]===0;
+        sum.textContent='Всего '+(stock[0]+stock[1])+' шт.';
+        saveButton.disabled=!draft.size;
+        status.textContent=draft.size?'Есть несохранённые изменения':'';
+      }
+      const minus=admin()?null:add(controls,'button','−',()=>change(-1));
+      const balance=add(controls,'strong',' '+count+' ');
+      if(minus){
+        minus.disabled=count===0;
+        minus.setAttribute('aria-label','Убрать одну штуку: '+item.name+', '+warehouse);
+        add(controls,'button','+',()=>change(1)).setAttribute('aria-label','Добавить одну штуку: '+item.name+', '+warehouse);
+      }
+    });
+  }
+  if(!admin()) {
+    saveButton=add(screen,'button','Сохранить',saveDraft);
+    saveButton.className='save-stock';
+    saveButton.disabled=!draft.size;
+  }
+}
+async function openWorkspace(){
+  status.textContent='';
+  const {data:{session},error}=await client.auth.getSession();
+  if(error || !session) return;
+  const result=await client.from('ceh_profiles').select('display_name,role').eq('id',session.user.id).maybeSingle();
+  $('login').hidden=true;
+  $('logout').hidden=false;
+  if(result.error || !result.data){
+    status.textContent='Для этой учётной записи не настроен профиль «ЦЕХа».';
+    return;
+  }
+  profile=result.data;
+  $('account').textContent=profile.display_name;
+  await loadStock();
+  render();
+}
+$('login').onsubmit=async event=>{
+  event.preventDefault();
+  const form=event.currentTarget;
+  const button=form.querySelector('button');
+  button.disabled=true;
+  try {
+    const {error}=await client.auth.signInWithPassword({
+      email:form.elements.email.value.trim(),password:form.elements.password.value
+    });
+    form.elements.password.value='';
+    if(error){status.textContent='Войти не удалось. Проверь почту и пароль.';return;}
+    await openWorkspace();
+  } catch {
+    status.textContent='Не удалось загрузить склад. Обнови страницу.';
+  } finally { button.disabled=false; }
+};
+$('logout').onclick=async()=>{
+  if(!discardDraft())return;
+  const {error}=await client.auth.signOut({scope:'local'});
+  if(error){status.textContent='Не удалось выйти. Попробуй ещё раз.';return;}
+  location.reload();
+};
+$('log').onclick=async()=>{
+  screen.replaceChildren();
+  add(screen,'button','← К остаткам',render);
+  add(screen,'h2','Журнал');
+  try {
+    const {data:rows,error}=await client.from('ceh_stock_log')
+      .select('created_at,warehouse_id,product_id,user_id,quantity_before,quantity_after')
+      .order('id',{ascending:false}).limit(100);
+    if(error) throw error;
+    if(!rows.length)add(screen,'p','Операций пока нет.');
+    const products=data.categories.flatMap(entry=>entry.items);
+    for(const row of rows){
+      const name=products.find(product=>product.id===row.product_id)?.name ?? row.product_id;
+      add(screen,'article',new Date(row.created_at).toLocaleString('ru-RU')+' · '+name+' · Склад '+row.warehouse_id+' · '+row.quantity_before+' → '+row.quantity_after);
+    }
+  } catch {status.textContent='Не удалось загрузить журнал.';}
+};
+openWorkspace().catch(()=>{status.textContent='Не удалось загрузить склад. Обнови страницу.';});
+</script></html>
