@@ -11,6 +11,12 @@ html[data-layout="landscape"] .stock>div{white-space:nowrap}
 [hidden]{display:none!important}
 .category-row{display:flex;align-items:center;gap:8px}
 .category-row .category{flex:1;min-width:0}
+.diameter-table{width:100%;border-collapse:collapse;margin-top:12px}
+.diameter-table th,.diameter-table td{padding:5px 2px;text-align:center}
+.diameter-table tbody tr{border-top:1px solid #dce8dc}
+.diameter-controls{display:flex;align-items:center;justify-content:center;gap:3px}
+.diameter-controls button{width:36px;padding:2px}
+.diameter-controls strong{white-space:nowrap;font-size:.85rem}
 </style>
 <header>🦜 ЦЕХ 🌿</header><main><div class="layout"><label for="layout">Вид экрана</label><select id="layout"><option value="auto">По размеру экрана</option><option value="portrait">Вертикальный</option><option value="landscape">Планшет горизонтально</option></select></div><form id="login"><label>Электронная почта<input name="email" type="email" required autocomplete="username"></label><label>Пароль<input name="password" type="password" required autocomplete="current-password"></label><button>Войти</button></form><p id="account"></p><button id="logout" hidden>Выйти</button> <button id="log" hidden>Журнал</button><section id="screen"></section><p id="status" role="status"></p></main>
 <script type="module">
@@ -110,38 +116,63 @@ function render(){
     if(!variants.length || total(item)>0){
       renderStock(card,item,variants.length?'Без распределения по диаметрам':'');
     }
-    for(const variant of variants) renderStock(card,variant,'Ø '+variant.biscuit_diameter+' см');
+    if(variants.length) renderDiameters(card,variants);
   }
+
+  function renderDiameters(card,variants){
+    const table=add(card,'table','');
+    table.className='diameter-table';
+    const heading=add(add(table,'thead',''),'tr','');
+    for(const label of ['Ø, см','Склад 1','Склад 2']) add(heading,'th',label).scope='col';
+    const body=add(table,'tbody','');
+    for(const variant of variants){
+      const row=add(body,'tr','');
+      add(row,'th',variant.biscuit_diameter).scope='row';
+      variant.stock.forEach((_,index)=>{
+        const cell=add(row,'td','');
+        const controls=add(cell,'div','');
+        controls.className='diameter-controls';
+        renderControls(controls,variant,index,null,true);
+      });
+    }
+  }
+
   function renderStock(card,item,label){
     if(label) add(card,'h3',label);
     const sum=add(card,'p','Всего '+total(item)+' шт.');
     const stocks=add(card,'div','');
     stocks.className='stocks';
-    item.stock.forEach((count,index)=>{
-      const row=add(stocks,'div','');row.className='stock';
-      const warehouse='Склад '+(index+1);
-      add(row,'span',warehouse);
-      const controls=add(row,'div','');
-      function change(delta){
-        const stock=draft.get(item) ?? [...item.stock];
-        if(stock[index]+delta<0 || stock[index]+delta>2147483647)return;
-        stock[index]+=delta;
-        if(stock.every((value,i)=>value===item.stock[i])) draft.delete(item);
-        else draft.set(item,stock);
-        balance.textContent=stock[index];
-        minus.disabled=stock[index]===0;
-        sum.textContent='Всего '+(stock[0]+stock[1])+' шт.';
-        saveButton.disabled=!draft.size;
-        status.textContent=draft.size?'Есть несохранённые изменения':'';
-      }
-      const minus=add(controls,'button','−',()=>change(-1));
-      const balance=add(controls,'strong',' '+count+' ');
-      if(minus){
-        minus.disabled=count===0;
-        minus.setAttribute('aria-label','Убрать одну штуку: '+item.name+', '+warehouse);
-        add(controls,'button','+',()=>change(1)).setAttribute('aria-label','Добавить одну штуку: '+item.name+', '+warehouse);
-      }
+    item.stock.forEach((_,index)=>{
+      const row=add(stocks,'div','');
+      row.className='stock';
+      add(row,'span','Склад '+(index+1));
+      renderControls(add(row,'div',''),item,index,sum,false);
     });
+  }
+
+  function renderControls(controls,item,index,sum,compact){
+    const count=item.stock[index];
+    const warehouse='Склад '+(index+1);
+    const balanceLabel=value=>compact ? value+' шт.' : ' '+value+' ';
+    function change(delta){
+      const stock=draft.get(item) ?? [...item.stock];
+      if(stock[index]+delta<0 || stock[index]+delta>2147483647)return;
+      stock[index]+=delta;
+      if(stock.every((value,i)=>value===item.stock[i])) draft.delete(item);
+      else draft.set(item,stock);
+      balance.textContent=balanceLabel(stock[index]);
+      minus.disabled=stock[index]===0;
+      if(sum) sum.textContent='Всего '+(stock[0]+stock[1])+' шт.';
+      saveButton.disabled=!draft.size;
+      status.textContent=draft.size?'Есть несохранённые изменения':'';
+    }
+    const minus=add(controls,'button','−',()=>change(-1));
+    const balance=add(controls,'strong',balanceLabel(count));
+    const plus=add(controls,'button','+',()=>change(1));
+    minus.disabled=count===0;
+    minus.setAttribute('aria-label','Убрать одну штуку: '+item.name+', '+warehouse);
+    plus.setAttribute('aria-label','Добавить одну штуку: '+item.name+', '+warehouse);
+    if(compact) controls.prepend(plus);
   }
   if(admin()) add(screen,'button','＋ Добавить позицию',()=>{if(discardDraft()) catalogForm(category.id);});
   {
