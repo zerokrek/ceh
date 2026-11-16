@@ -96,6 +96,11 @@ async function saveDraft(){
   }
 }
 const admin=()=>profile?.role==='admin';
+const staffWarehouses=new Map([
+  ['konditer1',1], ['konditer2',1],
+  ['konditer3',2], ['konditer4',2]
+]);
+const canEditWarehouse=id=>admin() || staffWarehouses.get(profile?.login)===id;
 const total=item=>item.stock[0]+item.stock[1];
 
 function categoryTotal(entry){
@@ -196,6 +201,11 @@ function render(){
 
   function renderControls(controls,item,index,sum,compact){
     const count=item.stock[index];
+    if(!canEditWarehouse(index+1)){
+      const balance=add(controls,'strong',String(count));
+      balance.title='Только просмотр';
+      return;
+    }
     const warehouse=warehouseNames[index+1];
     const balanceLabel=value=>compact ? String(value) : ' '+value+' ';
     function change(delta){
@@ -340,7 +350,7 @@ async function openWorkspace(){
   status.textContent='';
   const {data:{session},error}=await client.auth.getSession();
   if(error || !session) return;
-  const result=await client.from('ceh_profiles').select('display_name,role').eq('id',session.user.id).maybeSingle();
+  const result=await client.from('ceh_profiles').select('display_name,role,login').eq('id',session.user.id).maybeSingle();
   $('login').hidden=true;
   $('logout').hidden=false;
   if(result.error || !result.data){
