@@ -41,7 +41,7 @@ function discardDraft(){
   return true;
 }
 async function saveDraft(){
-  if(admin() || !draft.size || saving) return;
+  if(!draft.size || saving) return;
   const changes = [...draft].flatMap(([item, stock])=>stock.flatMap((quantity,index)=>
     quantity===item.stock[index] ? [] : [{product_id:item.id,warehouse_id:index+1,expected:item.stock[index],quantity}]));
   saving=true;
@@ -85,6 +85,7 @@ function render(){
     for(const entry of data.categories){
       add(screen,'button',entry.name+' · '+entry.items.reduce((sum,item)=>sum+total(item),0)+' шт. ›',()=>{category=entry;status.textContent='';render();}).className='category';
     }
+    if(admin()) add(screen,'button','＋ Добавить категорию',()=>catalogForm(null));
     return;
   }
   add(screen,'button','← Категории',()=>{if(!discardDraft())return;category=null;status.textContent='';render();});
@@ -103,7 +104,7 @@ function render(){
       const controls=add(row,'div','');
       function change(delta){
         const stock=draft.get(item) ?? [...item.stock];
-        if(admin()||stock[index]+delta<0)return;
+        if(stock[index]+delta<0 || stock[index]+delta>2147483647)return;
         stock[index]+=delta;
         if(stock.every((value,i)=>value===item.stock[i])) draft.delete(item);
         else draft.set(item,stock);
@@ -113,7 +114,7 @@ function render(){
         saveButton.disabled=!draft.size;
         status.textContent=draft.size?'Есть несохранённые изменения':'';
       }
-      const minus=admin()?null:add(controls,'button','−',()=>change(-1));
+      const minus=add(controls,'button','−',()=>change(-1));
       const balance=add(controls,'strong',' '+count+' ');
       if(minus){
         minus.disabled=count===0;
@@ -122,11 +123,63 @@ function render(){
       }
     });
   }
-  if(!admin()) {
+  if(admin()) add(screen,'button','＋ Добавить позицию',()=>{if(discardDraft()) catalogForm(category.id);});
+  {
     saveButton=add(screen,'button','Сохранить',saveDraft);
     saveButton.className='save-stock';
     saveButton.disabled=!draft.size;
   }
+}
+function catalogForm(categoryId){
+  screen.replaceChildren();
+  const form=add(screen,'form','');
+  add(form,'h2',categoryId===null?'Добавить категорию':'Добавить позицию');
+  const name=add(add(form,'label','Название'),'input','');
+  name.required=true;
+  name.maxLength=100;
+  const stocks=categoryId===null?[]:[1,2].map(id=>{
+    const input=add(add(form,'label','Склад '+id),'input','');
+    input.type='number';
+    input.required=true;
+    input.min='0';
+    input.max='2147483647';
+    input.step='1';
+    input.value='0';
+    return input;
+  });
+  const submit=add(form,'button','Сохранить');
+  const cancel=add(form,'button','Отмена',render);
+  form.onsubmit=async event=>{
+    event.preventDefault();
+    submit.disabled=true;
+    cancel.disabled=true;
+    $('logout').disabled=true;
+    $('log').disabled=true;
+    let saved=false;
+    try {
+      const {error}=await client.rpc('ceh_add_catalog_entry',{
+        entry_name:name.value.trim(),category:categoryId,quantities:stocks.map(input=>input.valueAsNumber)
+      });
+      if(error){
+        status.textContent=error.code==='23505'?'Такое название уже есть.':'Не удалось добавить запись.';
+        return;
+      }
+      saved=true;
+      await loadStock();
+      category=data.categories.find(entry=>entry.id===categoryId) ?? null;
+      render();
+      status.textContent='Запись добавлена';
+    } catch {
+      status.textContent=saved?'Запись добавлена. Обнови страницу, чтобы её увидеть.':'Не удалось подтвердить сохранение. Обнови страницу перед повтором.';
+    } finally {
+      submit.disabled=saved;
+      cancel.disabled=false;
+      $('logout').disabled=false;
+      $('log').disabled=false;
+    }
+  };
+  status.textContent='';
+  name.focus();
 }
 async function openWorkspace(){
   status.textContent='';
