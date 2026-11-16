@@ -122,9 +122,7 @@ function render(){
     if(admin()) add(card,'button','Удалить позицию',()=>archiveEntry(category,item));
     const variants=category.items.filter(product=>product.biscuit_parent_id===item.id)
       .sort((left,right)=>left.biscuit_diameter-right.biscuit_diameter);
-    if(!variants.length || total(item)>0){
-      renderStock(card,item,variants.length?'Без распределения по диаметрам':'');
-    }
+    if(!variants.length) renderStock(card,item);
     if(variants.length){
       card.classList.add('biscuit-card');
       renderDiameters(card,variants);
@@ -153,8 +151,7 @@ function render(){
     }
   }
 
-  function renderStock(card,item,label){
-    if(label) add(card,'h3',label);
+  function renderStock(card,item){
     const sum=add(card,'p','Всего '+total(item)+' шт.');
     const stocks=add(card,'div','');
     stocks.className='stocks';
