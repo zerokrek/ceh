@@ -562,6 +562,51 @@ $('log').onclick=async()=>{
   screen.replaceChildren();
   add(screen,'button','← К остаткам',render);
   add(screen,'h2','Журнал');
+  if(profile?.role==='admin'){
+    const catalog=add(screen,'section','');
+    add(catalog,'h3','Изменения каталога');
+    try {
+      const {data:events,error}=await client.rpc('ceh_catalog_history');
+      if(error) throw error;
+      if(!events.length) add(catalog,'p','Удалений и восстановлений пока нет.');
+      for(const event of events){
+        const action=event.action==='restore'?'Восстановление':'Удаление';
+        const kind=event.is_category?'категория':'позиция';
+        const date=new Date(event.created_at).toLocaleString('ru-RU');
+        const row=add(catalog,'article',[date,event.actor,action,kind+' «'+event.entry_name+'»'].filter(Boolean).join(' · '));
+        if(event.can_restore){
+          const restore=add(row,'button','Восстановить',async()=>{
+            if(!window.confirm('Восстановить «'+event.entry_name+'» с остатками по обоим складам?') || !discardDraft()) return;
+            restore.disabled=true;
+            screen.inert=true;
+            $('logout').disabled=true;
+            $('log').disabled=true;
+            let restored=false;
+            try {
+              const {error}=await client.rpc('ceh_restore_catalog_entry',{event_id:event.id});
+              if(error) throw error;
+              restored=true;
+              const categoryId=category?.id;
+              await loadStock();
+              category=data.categories.find(candidate=>candidate.id===categoryId) ?? null;
+              await $('log').onclick();
+              status.textContent='Запись восстановлена.';
+            } catch {
+              status.textContent=restored?'Запись восстановлена. Обнови страницу.':'Не удалось восстановить запись. Обнови журнал и попробуй ещё раз.';
+            } finally {
+              restore.disabled=false;
+              screen.inert=false;
+              $('logout').disabled=false;
+              $('log').disabled=false;
+            }
+          });
+        }
+      }
+    } catch {
+      add(catalog,'p','Не удалось загрузить изменения каталога.');
+    }
+    add(screen,'h3','Изменения остатков');
+  }
   try {
     const {data:rows,error}=await client.from('ceh_stock_log')
       .select('created_at,warehouse_id,product_id,user_id,quantity_before,quantity_after')
