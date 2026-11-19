@@ -355,14 +355,45 @@ function render(){
     saveButton.disabled=!draft.size;
   }
 }
+function requestCatalogName(original){
+  return new Promise(resolve=>{
+    const dialog=document.createElement('dialog');
+    dialog.setAttribute('aria-label','Переименование');
+    const form=add(dialog,'form','');
+    const input=add(add(form,'label','Новое название'),'input','');
+    input.required=true;
+    input.value=original;
+    input.autofocus=true;
+    input.addEventListener('input',()=>input.setCustomValidity(''));
+    const save=add(form,'button','Сохранить');
+    save.type='submit';
+    const cancel=add(form,'button','Отмена',()=>dialog.close());
+    cancel.type='button';
+    let name;
+    form.addEventListener('submit',event=>{
+      event.preventDefault();
+      const value=input.value.trim();
+      if(!value || [...value].length>100){
+        input.setCustomValidity('Введи название длиной от 1 до 100 символов.');
+        input.reportValidity();
+        return;
+      }
+      name=value;
+      dialog.close();
+    });
+    dialog.addEventListener('close',()=>{
+      dialog.remove();
+      resolve(name);
+    },{once:true});
+    document.body.append(dialog);
+    dialog.showModal();
+    input.select();
+  });
+}
 async function renameEntry(entry,item){
   const original=item?.name ?? entry.name;
-  const name=window.prompt('Новое название',original)?.trim();
+  const name=await requestCatalogName(original);
   if(name===undefined || name===original) return;
-  if(!name || [...name].length>100){
-    status.textContent='Введи название длиной от 1 до 100 символов.';
-    return;
-  }
   if(!discardDraft()) return;
   const currentId=category?.id;
   screen.inert=true;
